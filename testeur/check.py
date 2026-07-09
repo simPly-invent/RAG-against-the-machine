@@ -32,6 +32,13 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 MODULE = "student"  # module CLI attendu par le sujet : `python -m student ...`
 
+# Arborescence attendue par la moulinette (chap. V.6)
+PROCESSED = ROOT / "data/processed"                       # bm25_index/ + chunks/
+OUT_SEARCH = ROOT / "data/output/search_results"          # sorties search_dataset
+OUT_ANSWER = ROOT / "data/output/search_results_and_answer"  # sorties answer_dataset
+# Le nom du fichier de sortie doit == le nom du dataset d'entrée
+DATASET_NAMES = {"dataset_docs_public.json", "dataset_code_public.json"}
+
 # Seuils de recall@5 imposés par le sujet (chap. VI.1.2)
 RECALL5_DOCS_MIN = 0.80
 RECALL5_CODE_MIN = 0.50
@@ -45,9 +52,10 @@ def _c(code: str, text: str) -> str:
     return f"\033[{code}m{text}\033[0m" if _TTY else text
 
 
-PASS, FAIL, WARN, SKIP = "PASS", "FAIL", "WARN", "SKIP"
+PASS, FAIL, WARN, SKIP, TODO = "PASS", "FAIL", "WARN", "SKIP", "TODO"
 _ICON = {PASS: _c("32", "OK "), FAIL: _c("31", "KO "),
-         WARN: _c("33", "~~ "), SKIP: _c("90", ".. ")}
+         WARN: _c("33", "~~ "), SKIP: _c("90", ".. "),
+         TODO: _c("35", "[] ")}
 
 
 @dataclass
@@ -121,6 +129,58 @@ def overlap_ratio(r: dict, g: dict) -> float:
     inter = max(0, hi - lo)
     span = max(1, int(g["last_character_index"]) - int(g["first_character_index"]))
     return inter / span
+
+
+def _validate_files(files: list[Path], model_name: str, label: str) -> list[Result]:
+    """Valide chaque JSON contre un modèle Pydantic imposé."""
+    mod = import_models()
+    model = getattr(mod, model_name, None) if mod else None
+    if model is None:
+        return [Result(WARN, f"{label} : modèle {model_name}",
+                      "modèle introuvable", mandatory=False)]
+    bad = None
+    for p in files:
+        ok, res = safe(lambda p=p: model.model_validate(json.loads(p.read_text())))
+        if not ok:
+            bad = f"{p.name} : {str(res)[:120]}"
+            break
+    return [Result(PASS if bad is None else FAIL,
+                  f"{label} : conforme à {model_name}",
+                  bad or f"{len(files)} fichier(s) OK", mandatory=False)]
+
+
+def safe(fn: Callable[[], object]) -> tuple[bool, object]:
+    """Exécute fn sans planter -> (succès, résultat_ou_exception)."""
+    try:
+        return True, fn()
+    except Exception as exc:  # noqa: BLE001
+        return False, exc
+
+
+def _check_output_dir(dirpath: Path, model_name: str, label: str,
+                      check_k: bool = False) -> list[Result]:
+    """Vérifie un dossier de sortie : présence, nom == dataset, conformité modèle."""
+    if not dirpath.exists():
+        return [Result(SKIP, label,
+                      f"{dirpath.relative_to(ROOT)} absent (pas encore produit)",
+                      mandatory=False)]
+    files = list(dirpath.rglob("*.json"))
+    if not files:
+        return [Result(SKIP, label, "aucun .json produit", mandatory=False)]
+
+    out: list[Result] = []
+    names = {p.name for p in files}
+    good = names & DATASET_NAMES
+    out.append(Result(PASS if good else WARN, f"{label} : nom == dataset d'entrée",
+                      f"ok : {sorted(good)}" if good else f"noms inattendus : {sorted(names)}",
+                      mandatory=False))
+    out += _validate_files(files, model_name, label)
+    if check_k:
+        missing = [p.name for p in files
+                   if "k" not in (json.loads(p.read_text()) if p.is_file() else {})]
+        out.append(Result(PASS if not missing else WARN, f"{label} : champ k présent",
+                          f"absent dans : {missing}" if missing else "", mandatory=False))
+    return out
 
 
 # ===========================================================================
@@ -241,12 +301,20 @@ def step_cli(ctx: Ctx) -> list[Result]:
 # ÉTAPE 3 — Indexation (lent : --full)
 # ===========================================================================
 def step_index(ctx: Ctx) -> list[Result]:
+    proc_ok = PROCESSED.exists() and any(p.is_file() for p in PROCESSED.rglob("*"))
+    res: list[Result] = [Result(
+        PASS if proc_ok else SKIP, "index : artefacts data/processed/",
+        "présents" if proc_ok else "pas encore générés (bm25_index/, chunks/)",
+        mandatory=False)]
     if not ctx.full:
-        return [Result(SKIP, "indexation réelle", "relance avec --full", mandatory=False)]
+        res.append(Result(SKIP, "indexation réelle", "relance avec --full",
+                          mandatory=False))
+        return res
     rc, _o, err, secs = run_cli(["index", "--max_chunk_size", "2000"], timeout=600)
     if rc != 0:
-        return [Result(FAIL, "index : exécution", err.strip()[-300:] or f"rc={rc}")]
-    res = [Result(PASS, "index : exécution sans crash")]
+        res.append(Result(FAIL, "index : exécution", err.strip()[-300:] or f"rc={rc}"))
+        return res
+    res.append(Result(PASS, "index : exécution sans crash"))
     res.append(Result(PASS if secs <= 300 else FAIL,
                       f"index : durée {secs:.0f}s", "seuil 300s (5 min)"))
     return res
@@ -341,38 +409,260 @@ def step_recall(ctx: Ctx) -> list[Result]:
 
 
 # ===========================================================================
-# ÉTAPE 6 — Format des réponses générées
+# ÉTAPE — search_dataset : sortie batch conforme
 # ===========================================================================
-def step_answer_format(ctx: Ctx) -> list[Result]:
+def step_search_dataset(ctx: Ctx) -> list[Result]:
+    return _check_output_dir(OUT_SEARCH, "StudentSearchResults",
+                             "search_dataset", check_k=True)
+
+
+# ===========================================================================
+# ÉTAPE — answer_dataset : réponses batch conformes
+# ===========================================================================
+def step_answer_dataset(ctx: Ctx) -> list[Result]:
     a = ctx.args
     path = getattr(a, "answers", None)
-    if not path:
-        return [Result(SKIP, "format des réponses",
-                      "fournir --answers <json>", mandatory=False)]
-    p = Path(path)
-    if not p.is_file():
-        return [Result(FAIL, "answers", "fichier introuvable")]
-    try:
-        data = json.loads(p.read_text())
-        rows = data["search_results"]
-    except Exception as exc:  # noqa: BLE001
-        return [Result(FAIL, "answers : JSON", str(exc))]
-    empty = sum(1 for r in rows if not str(r.get("answer", "")).strip())
-    res = [Result(PASS if empty == 0 else WARN,
-                 f"answers : {len(rows)} réponses",
-                 f"{empty} vide(s)" if empty else "", mandatory=False)]
-    return res
+    if path:  # fichier explicite fourni en option
+        p = Path(path)
+        if not p.is_file():
+            return [Result(FAIL, "answers", "fichier introuvable")]
+        files = [p]
+    else:  # sinon, dossier standard du sujet
+        if not OUT_ANSWER.exists():
+            return [Result(SKIP, "answer_dataset",
+                          f"{OUT_ANSWER.relative_to(ROOT)} absent (pas encore produit)",
+                          mandatory=False)]
+        files = list(OUT_ANSWER.rglob("*.json"))
+        if not files:
+            return [Result(SKIP, "answer_dataset", "aucun .json produit",
+                          mandatory=False)]
+
+    out = _validate_files(files, "StudentSearchResultsAndAnswer", "answer_dataset")
+    for p in files:
+        ok, data = safe(lambda p=p: json.loads(p.read_text()))
+        rows = data.get("search_results", []) if ok and isinstance(data, dict) else []
+        empty = sum(1 for r in rows if not str(r.get("answer", "")).strip())
+        out.append(Result(PASS if empty == 0 else WARN,
+                          f"answer_dataset : {p.name} ({len(rows)} réponses)",
+                          f"{empty} vide(s)" if empty else "", mandatory=False))
+    return out
+
+
+# ===========================================================================
+# ÉTAPE — Auto-test de la métrique (valide le testeur lui-même)
+# ===========================================================================
+def step_selftest(ctx: Ctx) -> list[Result]:
+    def src(fp: str, a: int, b: int) -> dict:
+        return {"file_path": fp, "first_character_index": a,
+                "last_character_index": b}
+    cases = [
+        ("overlap identique = 1.0",
+         overlap_ratio(src("a.py", 0, 100), src("a.py", 0, 100)) == 1.0),
+        ("fichier différent = 0.0",
+         overlap_ratio(src("a.py", 0, 100), src("b.py", 0, 100)) == 0.0),
+        ("préfixe data/raw ignoré",
+         overlap_ratio(src("vllm-0.10.1/x.py", 0, 100),
+                       src("data/raw/vllm-0.10.1/x.py", 0, 100)) == 1.0),
+        ("overlap 2% < seuil 5%",
+         overlap_ratio(src("a.py", 98, 100), src("a.py", 0, 100)) < OVERLAP_MIN),
+    ]
+    return [Result(PASS if ok else FAIL, f"métrique : {label}") for label, ok in cases]
+
+
+# ===========================================================================
+# ÉTAPE — Conception : décomposition des fonctions, vérifiée automatiquement
+# ===========================================================================
+CHUNKS_JSON = PROCESSED / "chunks.json"
+MAX_CHUNK = 2000
+_SRC_CACHE: dict[str, str] = {}
+
+
+def _src_text() -> str:
+    """Concatène le code du package `student` (pour repérer tqdm, bm25, Qwen...)."""
+    if "all" not in _SRC_CACHE:
+        parts = []
+        for p in (SRC / MODULE).rglob("*.py"):
+            ok, txt = safe(lambda p=p: p.read_text(encoding="utf-8", errors="ignore"))
+            if ok:
+                parts.append(str(txt))
+        _SRC_CACHE["all"] = "\n".join(parts).lower()
+    return _SRC_CACHE["all"]
+
+
+def _uses(needle: str) -> bool:
+    return needle.lower() in _src_text()
+
+
+def _read_chunks() -> tuple[Optional[list], str]:
+    """Charge chunks.json (avec garde-fou de taille) -> (data, message d'erreur)."""
+    if not CHUNKS_JSON.is_file():
+        return None, "data/processed/chunks.json absent — lance `index`"
+    size = CHUNKS_JSON.stat().st_size
+    if size > 400_000_000:
+        return None, f"chunks.json trop gros ({size / 1e6:.0f} Mo) pour l'analyse"
+    ok, data = safe(lambda: json.loads(CHUNKS_JSON.read_text(encoding="utf-8")))
+    if not ok:
+        return None, f"JSON invalide : {str(data)[:80]}"
+    return data if isinstance(data, list) else None, (
+        "" if isinstance(data, list) else "la racine n'est pas une liste")
+
+
+def _flatten(data: list) -> tuple[list, bool]:
+    """Aplatit une liste de listes ; renvoie (chunks, était_imbriqué)."""
+    if data and isinstance(data[0], list):
+        return [c for sub in data for c in sub], True
+    return data, False
+
+
+def _design_index(out: list[Result]) -> None:
+    data, err = _read_chunks()
+    if data is None:
+        out.append(Result(SKIP, "[index] chunks.json analysable", err, mandatory=False))
+        return
+
+    chunks, nested = _flatten(data)
+    out.append(Result(
+        FAIL if nested else PASS, "[index] chunks.json = liste plate de chunks",
+        "liste de listes ! utilise `resized += chunk_text(...)` (ou .extend) "
+        "au lieu de .append" if nested else f"{len(chunks)} chunks",
+        mandatory=False))
+
+    dicts = [c for c in chunks if isinstance(c, dict)]
+    if not dicts:
+        out.append(Result(FAIL, "[index] chunks = dictionnaires", "aucun dict trouvé",
+                          mandatory=False))
+        return
+
+    need = {"file_path", "first_character_index", "last_character_index"}
+    keys_ok = all(need <= set(c) for c in dicts)
+    out.append(Result(PASS if keys_ok else FAIL,
+                      "[index] chaque chunk garde file_path + first/last",
+                      "" if keys_ok else f"clés attendues : {sorted(need)}",
+                      mandatory=False))
+
+    exts = {Path(str(c.get("file_path", ""))).suffix for c in dicts}
+    bad = exts - {".py", ".md"}
+    out.append(Result(PASS if not bad else WARN, "[index] fichiers filtrés (.py, .md)",
+                      f"autres extensions : {sorted(bad)[:6]}" if bad else "",
+                      mandatory=False))
+
+    prefixed = all("vllm-0.10.1" in str(c.get("file_path", "")) for c in dicts)
+    out.append(Result(PASS if prefixed else FAIL,
+                      "[index] file_path comparable à la ground truth",
+                      "" if prefixed else "doit contenir vllm-0.10.1/...",
+                      mandatory=False))
+
+    if keys_ok:
+        spans = [c["last_character_index"] - c["first_character_index"] for c in dicts]
+        too_big = [s for s in spans if s > MAX_CHUNK]
+        out.append(Result(PASS if not too_big else FAIL,
+                          f"[index] respecte max_chunk_size ({MAX_CHUNK})",
+                          f"{len(too_big)} chunk(s) trop grands (max {max(spans)})"
+                          if too_big else f"max observé : {max(spans)}",
+                          mandatory=False))
+
+        coherent = all(0 <= c["first_character_index"] < c["last_character_index"]
+                       for c in dicts)
+        out.append(Result(PASS if coherent else FAIL,
+                          "[index] indices cohérents (0 <= first < last)",
+                          mandatory=False))
+
+        # Heuristique : si presque tous les spans valent pile MAX_CHUNK,
+        # c'est une fenêtre fixe -> le chunking "intelligent" reste à faire.
+        exact = sum(1 for s in spans if s == MAX_CHUNK)
+        fixed = exact > 0.5 * len(spans)
+        out.append(Result(TODO if fixed else PASS,
+                          "[index] chunking intelligent (Python: def/class, MD: sections)",
+                          "fenêtre fixe détectée — à raffiner pour le recall"
+                          if fixed else "découpage non uniforme (bon signe)",
+                          mandatory=False))
+
+    bm25 = any(PROCESSED.glob("*bm25*")) or _uses("bm25") or _uses("tfidf")
+    out.append(Result(PASS if bm25 else TODO,
+                      "[index] index BM25 (ou TF-IDF) construit et persisté",
+                      "" if bm25 else "rien dans data/processed/, ni dans le code",
+                      mandatory=False))
+
+    out.append(Result(PASS if _uses("tqdm") else TODO,
+                      "[index] barre de progression tqdm", mandatory=False))
+
+
+def _func_src(name: str) -> str:
+    """Source de LA fonction CLI demandée (pas de tout le package)."""
+    key = f"fn:{name}"
+    if key not in _SRC_CACHE:
+        import inspect
+        for p in (str(SRC), str(ROOT)):
+            if p not in sys.path:
+                sys.path.insert(0, p)
+        ok, mod = safe(lambda: importlib.import_module(f"{MODULE}.CLI"))
+        fn = getattr(mod, name, None) if ok else None
+        ok2, src = safe(lambda: inspect.getsource(fn)) if fn else (False, "")
+        _SRC_CACHE[key] = str(src).lower() if ok2 else ""
+    return _SRC_CACHE[key]
+
+
+def _is_stub(name: str) -> bool:
+    """Un stub = un corps d'une seule instruction (`return x`)."""
+    lines = [ln.strip() for ln in _func_src(name).splitlines()[1:]
+             if ln.strip() and not ln.strip().startswith("#")]
+    return len(lines) <= 1
+
+
+_PROBES: dict[str, list[tuple[str, Callable[[str], bool]]]] = {
+    "search": [
+        ("charge l'index depuis data/processed/",
+         lambda s: "chunks.json" in s or "processed" in s),
+        ("scorer et prendre le top-k (--k)",
+         lambda s: "score" in s or "top" in s or "sort" in s),
+        ("mapper chaque hit -> MinimalSource", lambda s: "minimalsource" in s),
+        ("gérer les cas dégénérés (query vide, index absent)",
+         lambda s: "except" in s),
+    ],
+    "answer": [
+        ("faire un search pour récupérer le contexte", lambda s: "search" in s),
+        ("charger Qwen/Qwen3-0.6B", lambda s: "qwen" in s),
+        ("construire le prompt (contexte + question)", lambda s: "prompt" in s),
+    ],
+    "evaluate": [
+        ("normaliser les file_path", lambda s: "vllm-0.10.1" in s or "norm" in s),
+        ("overlap de caractères >= 5%", lambda s: "0.05" in s or "overlap" in s),
+        ("recall@k agrégé", lambda s: "recall" in s),
+    ],
+}
+
+
+def _design_rest(out: list[Result]) -> None:
+    for func, checks in _PROBES.items():
+        stub = _is_stub(func)
+        for i, (label, pred) in enumerate(checks):
+            done = (not stub) and pred(_func_src(func))
+            note = "fonction encore vide (stub)" if stub and i == 0 else ""
+            out.append(Result(PASS if done else TODO, f"[{func}] {label}", note,
+                              mandatory=False))
+
+
+def step_design(ctx: Ctx) -> list[Result]:
+    out: list[Result] = []
+    _design_index(out)
+    _design_rest(out)
+    return out
 
 
 # ===========================================================================
 STEPS: list[Step] = [
     Step("structure", "Étape 0 — Structure & outillage", step_structure),
     Step("models", "Étape 1 — Modèles Pydantic", step_models),
+    Step("selftest", "Étape 1b — Auto-test de la métrique", step_selftest),
     Step("cli", "Étape 2 — CLI Fire (commandes)", step_cli),
-    Step("index", "Étape 3 — Indexation (--full)", step_index),
+    Step("design", "Conception — fonctions à coder (roadmap)", step_design),
+    Step("index", "Étape 3 — Indexation (artefacts + --full)", step_index),
     Step("search", "Étape 4 — Format d'un search (--full)", step_search_format),
+    Step("search_dataset", "Étape 4b — search_dataset (sortie batch)",
+         step_search_dataset),
     Step("recall", "Étape 5 — Recall@k", step_recall),
-    Step("answers", "Étape 6 — Format des réponses", step_answer_format),
+    Step("answers", "Étape 6 — answer_dataset (réponses batch)",
+         step_answer_dataset),
 ]
 
 
@@ -392,7 +682,7 @@ def main() -> int:
     ctx = Ctx(full=args.full, args=args)
     steps = [s for s in STEPS if not args.step or s.key == args.step]
 
-    total = {PASS: 0, FAIL: 0, WARN: 0, SKIP: 0}
+    total = {PASS: 0, FAIL: 0, WARN: 0, SKIP: 0, TODO: 0}
     hard_fail = False
     print(_c("1", "\n=== Testeur RAG — état d'avancement ===\n"))
     for st in steps:
@@ -411,10 +701,11 @@ def main() -> int:
     print(f"  {_c('32', 'OK')}={total[PASS]}  "
           f"{_c('31', 'KO')}={total[FAIL]}  "
           f"{_c('33', '~~')}={total[WARN]}  "
-          f"{_c('90', '..')}={total[SKIP]}")
+          f"{_c('90', '..')}={total[SKIP]}  "
+          f"{_c('35', '[]')}={total[TODO]}")
     verdict = ("étape(s) obligatoire(s) en échec" if hard_fail
                else "aucune étape obligatoire en échec")
-    print(f"  Verdict : {_c('31', verdict) if hard_fail else _c('32', verdict)}\n")
+    (f"  Verdict : {_c('31', verdict) if hard_fail else _c('32', verdict)}\n")
     return 1 if hard_fail else 0
 
 
