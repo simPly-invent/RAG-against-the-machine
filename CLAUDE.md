@@ -135,7 +135,12 @@ Peut être étendu si besoin.
 ```
 /home/mobenais/Documents/RAG-against-the-machine/
 ├── rag.pdf                    # sujet
-├── vllm-0.10.1/               # repo à indexer
+├── data/
+│   ├── raw/vllm-0.10.1/       # repo à indexer (déplacé ici : c'est ce que
+│   │                          #   la moulinette attend, cf. sujet V.6.1)
+│   └── processed/
+│       ├── bm25_index/        # écrit par `index` (dossier, 5 fichiers)
+│       └── chunks/            # sujet = dossier au PLURIEL
 ├── datasets_public/public/
 │   ├── AnsweredQuestions/     # ground truth pour eval
 │   │   ├── dataset_code_public.json
@@ -153,8 +158,9 @@ Peut être étendu si besoin.
 - [x] Setup projet `uv` + structure `src/`
 - [x] Modèles Pydantic
 - [x] Ingestion + chunking (Python / Markdown)
-- [ ] Index BM25  ← **prochaine étape**
+- [x] Index BM25 (`bm25s`, persisté dans `data/processed/bm25_index/`)
 - [x] CLI Fire (index, search, search_dataset, answer, answer_dataset, evaluate)
+- [ ] `search` : premier vrai retrieval  ← **prochaine étape**
 - [ ] LLM Qwen3-0.6B integration
 - [ ] Recall@k evaluation
 - [ ] Perf tuning (viser recall@5 > seuils)
@@ -165,9 +171,20 @@ Peut être étendu si besoin.
 ## Découvertes clés du sujet (à ne pas oublier)
 
 - **Arborescence attendue par la moulinette** :
-  - `data/raw/vllm-0.10.1/` (repo à indexer — en local il est encore à la racine)
+  - `data/raw/vllm-0.10.1/` (repo à indexer — **déplacé, c'est fait**)
   - `data/processed/` → `bm25_index/` + `chunks/`
   - `data/output/search_results/` et `data/output/search_results_and_answer/`
+  - Le sujet ne *dit* jamais « mets le repo dans `data/raw/` » : il le **montre**
+    en V.6.1 « Files before » (`ls -l data/raw` → `vllm-0.10.1`). C'est l'état de
+    l'environnement à la correction, pas un choix. Idem `chunks` : le `ls` de V.6.2
+    montre un `d` en tête de ligne → c'est un **dossier**, pas un `chunks.json`.
+- **`search` n'a aucun exemple d'invocation dans le sujet** (seule commande des 6
+  dans ce cas). Proto déduit par symétrie avec `answer "..." --k 10` :
+  `def search(query: str, k: int = 10) -> list[dict]` — query positionnel, `k`
+  optionnel, retourne des `MinimalSource` (3 champs, **sans** `text` ni `index`).
+- V.2.5 : « CLI arguments will be tested thoroughly with edge cases ». Pour `search` :
+  index absent, `k` ≤ 0, `k` > nombre de chunks (bm25s lève), query vide ou
+  100% stopwords (tokenize renvoie 0 token → cousin du `ValueError: max() … empty`).
 - **Le nom du fichier de sortie == le nom du dataset d'entrée**
   (`dataset_docs_public.json` en entrée → `dataset_docs_public.json` en sortie).
 - L'`evaluate` **officiel** n'est pas le nôtre : la moulinette lance
@@ -188,25 +205,45 @@ Peut être étendu si besoin.
     `chunk_overlap=200`, **`add_start_index=True`** (indispensable pour les indices)
   - autres → `chunk_text()` : fenêtre fixe de `max_chunk_size`
   - Vérifié : 0 indice faux, aucun chunk > 2000.
-- `src/student/CLI.py` : `index` lit `.py`/`.md`, chunk, persiste `data/processed/chunks.json`.
-- Dépendances ajoutées : `tqdm`, `langchain`, `langchain-text-splitters`.
+- `src/student/CLI.py` : `index(max_chunk_size: int = 2000)` lit `.py`/`.md` sous
+  `data/raw/vllm-0.10.1`, chunk, persiste les chunks, puis construit et sauvegarde
+  l'index BM25. Les 5 autres commandes sont encore des stubs.
+- Dépendances ajoutées : `tqdm`, `langchain`, `langchain-text-splitters`, `bm25s`.
 
 ## Testeur maison
 
-`testeur/check.py` (outil de dev, non soumis) — voir `testeur/README.md`.
-Lancer **avec uv** : `uv run python testeur/check.py [--full] [--step <nom>]`.
+`tester/check.py` (outil de dev, non soumis). Lancer **avec uv** :
+`uv run python tester/check.py [--full] [--step <nom>]`.
 Statuts : `OK` / `KO` / `~~` / `..` / `[]` (conception restant à faire).
 L'étape `design` est **auto-vérifiée** : elle analyse `chunks.json` (structure,
 extensions, indices, `max_chunk_size`) et la source de chaque fonction CLI.
 
+Ses propres défauts (à corriger, il resservira) :
+- `CHUNKS_JSON` est un chemin **en dur** → se désynchronise dès qu'on bouge la sortie.
+- `_design_index` ne distingue pas « 0 chunk » de « chunks du mauvais type » : sur une
+  liste vide il annonce `PASS — 0 chunks` puis `KO — aucun dict trouvé`. Ajouter un
+  `if not chunks: FAIL "chunks.json est vide"` juste après `_flatten`.
+
 ## À corriger (dette connue)
 
-- `CLI.py` : **chemin absolu en dur** (`/home/mobenais/...`) → doit devenir relatif
-  et configurable via argument CLI.
-- `CLI.py` : `except Exception as e` avec `e` inutilisé + f-string sans placeholder
-  → flake8 va râler.
-- Les paramètres `index="c'est l'index"` (et équivalents) sont des restes de stubs.
-- `max_chunk_size` n'est pas encore branché sur l'argument CLI.
+- [x] ~~chemin absolu en dur~~ → relatif (`data/raw/vllm-0.10.1`), reste à en faire un
+  argument CLI (`repo_path`).
+- [x] ~~`max_chunk_size` pas branché~~ → fait.
+- `CLI.py` : le `try/except` autour de l'écriture des chunks fait `return` d'une string
+  → Fire imprime et sort avec le code **0**. Une indexation ratée passe pour un succès.
+  Supprimer le `try/except`, laisser l'exception remonter.
+- `CLI.py` : code de debug résiduel dans `index` (query « does the fish purr like a
+  cat? », `retrieve`, `results`/`scores` jamais lus → `F841`).
+- `CLI.py` : `"data/processed/bm25_index"` réécrit en dur alors que `output_dir` existe.
+- `CLI.py` : `if file_path.is_file()` redondant (déjà filtré dans la compréhension).
+- `CLI.py` : deux sorties de chunks coexistent (`processed/chunks.json` et un
+  sous-dossier). Le sujet veut `data/processed/chunks/`. Trancher.
+- mypy `--disallow-untyped-defs` : `resized_dataset = []` non annoté → `list[dict]`.
+  Les 5 stubs (`search`, …) n'ont ni annotation ni retour typé.
+- **venv en Python 3.12** alors que le sujet impose **3.10** (`requires-python = ">=3.10"`
+  l'autorise, et pas de `.python-version`). → `uv python pin 3.10` + recréer le venv.
+- Chemins encodés à 3 endroits (`CLI.py`, `check.py`, sujet) → envisager un
+  `src/student/paths.py` avec `RAW_DIR` / `PROCESSED_DIR` / `CHUNKS_DIR` / `BM25_DIR`.
 - Branche `if len(doc.page_content) > max_chunk_size` dans `chunk_code` : **code mort**
   (le dernier séparateur LangChain est `""`, donc la taille n'est jamais dépassée).
 
@@ -224,12 +261,37 @@ Pièges Python rencontrés (à retenir) :
 - tqdm : utiliser `desc="..."` plutôt qu'un `print(..., end="")` (tqdm écrit sur stderr,
   et un print sans `\n` n'est pas flush).
 
-**Prochaine étape : BM25** (`uv add bm25s`)
-- `index` : `corpus = [c["text"] for c in chunks]` → `bm25s.tokenize(corpus)` →
-  `BM25().index(tokens)` → `.save("data/processed/bm25_index")`
-- `search` : `BM25.load(...)` → `retrieve(query_tokens, k)` → `doc_id` → `chunks[doc_id]`
-- ⚠️ **L'ordre de `chunks` doit rester identique à celui du `corpus`** : les `doc_id`
-  renvoyés sont des **positions** dans le corpus. Réordonner/filtrer entre l'index et
-  le search casse le recall silencieusement.
-- Levier pour le recall code : découper `snake_case`/`camelCase` à la tokenisation
-  (`get_supported_mm_limits` → `get`, `supported`, `mm`, `limits`).
+**BM25 : fait.** `index` construit `corpus = [c["text"] for c in chunks]` →
+`bm25s.tokenize(corpus)` → `BM25().index(tokens)` → `.save("data/processed/bm25_index")`.
+Prochaine étape : `search` = `BM25.load(...)` → `retrieve(query_tokens, k)` → `doc_id`
+→ `chunks[doc_id]`.
+
+⚠️ **L'ordre de `chunks` doit rester identique à celui du `corpus`** : les `doc_id`
+renvoyés sont des **positions** dans le corpus. Réordonner/filtrer entre l'index et
+le search casse le recall silencieusement.
+
+Ce qu'on a appris sur `bm25s` (vérifié dans le code source / à l'exécution) :
+- `BM25(...)` **n'a pas** de `**kwargs`. Le seul kwarg de corpus s'appelle `corpus=`,
+  et il est optionnel (il sert juste à ce que `retrieve` renvoie les objets, pas les ids).
+- `tokenize()` attend `str | List[str]`. Lui passer la `list[dict]` de chunks → erreur.
+- `save(save_dir)` : `save_dir` est un **dossier**, jamais un fichier. bm25s fait
+  `Path(save_dir).mkdir(parents=True, exist_ok=True)` lui-même, puis écrit 5 fichiers
+  dedans. Donner `bm25_index.txt` crée donc un *dossier* nommé `bm25_index.txt`.
+- `load(save_dir, mmap=False)` : passer `mmap=True` mappe les `.npy` au lieu de les
+  charger → levier direct pour la contrainte **cold start ≤ 60 s**. Pour la phase perf.
+- `retrieve()` renvoie `(results, scores)` de shape `(n_queries, k)` → query unique =
+  `results[0]`.
+- ⚠️ Le `token_pattern` par défaut est `(?u)\b\w\w+\b`, et **`\w` inclut l'underscore**.
+  Donc `get_supported_mm_limits` reste **un seul token** (vérifié), et le camelCase est
+  juste lowercasé. C'est LE levier pour le recall code : `token_pattern` custom, appliqué
+  **identiquement** à l'indexation et à la recherche.
+
+Pièges Python / outillage (suite) :
+- Corpus vide → bm25s lève `ValueError: max() iterable argument is empty`, 15 lignes et
+  3 libs plus loin que la cause. **Le vrai signal est le `0it` de la barre tqdm.** Quand
+  une barre affiche `0it`, s'arrêter là et ne pas lire le traceback.
+- Fire : si un flag ne correspond à aucun paramètre, la fonction est appelée **sans lui**,
+  puis Fire tente d'appliquer le flag au **retour**. D'où le `rfind | rjust | rsplit …`
+  (méthodes de `str`) et le vrai message noyé plus haut : `Could not consume arg`.
+  Autrement dit : la commande *s'exécute* mais sort en code ≠ 0.
+- Un `return` d'une string dans un `except` = code de sortie **0** = échec invisible.
