@@ -150,11 +150,11 @@ Peut être étendu si besoin.
 
 - [x] Lecture du sujet
 - [x] Inspection dossier
-- [ ] Setup projet `uv` + structure `src/`
-- [ ] Modèles Pydantic
-- [ ] Ingestion + chunking (Python / Markdown)
-- [ ] Index BM25
-- [ ] CLI Fire (index, search, search_dataset, answer, answer_dataset, evaluate)
+- [x] Setup projet `uv` + structure `src/`
+- [x] Modèles Pydantic
+- [x] Ingestion + chunking (Python / Markdown)
+- [ ] Index BM25  ← **prochaine étape**
+- [x] CLI Fire (index, search, search_dataset, answer, answer_dataset, evaluate)
 - [ ] LLM Qwen3-0.6B integration
 - [ ] Recall@k evaluation
 - [ ] Perf tuning (viser recall@5 > seuils)
@@ -162,6 +162,74 @@ Peut être étendu si besoin.
 - [ ] README.md complet
 - [ ] Bonus
 
+## Découvertes clés du sujet (à ne pas oublier)
+
+- **Arborescence attendue par la moulinette** :
+  - `data/raw/vllm-0.10.1/` (repo à indexer — en local il est encore à la racine)
+  - `data/processed/` → `bm25_index/` + `chunks/`
+  - `data/output/search_results/` et `data/output/search_results_and_answer/`
+- **Le nom du fichier de sortie == le nom du dataset d'entrée**
+  (`dataset_docs_public.json` en entrée → `dataset_docs_public.json` en sortie).
+- L'`evaluate` **officiel** n'est pas le nôtre : la moulinette lance
+  `uv run python -m moulinette evaluate_student_search_results --student_answer_path ... --dataset_path ... --k 10`.
+  Notre commande `student evaluate` doit exister quand même (exigée au chap. V.2.5).
+- La ground truth préfixe les `file_path` par `data/raw/vllm-0.10.1/...` → nos
+  `file_path` doivent être **comparables** (normalisation nécessaire).
+
+## État du code
+
+- `src/student/__main__.py` : **un seul** `fire.Fire({...})` mappant les 6 commandes.
+  (`python -m student` exécute `__main__.py`, pas `CLI.py`.)
+- `pyproject.toml` : `[build-system]` hatchling + `packages = ["src/student"]`
+  (sans ça : `No module named student`).
+- `src/student/chunking.py` :
+  - `chunk_file()` = aiguilleur sur `Path(...).suffix`
+  - `.py` → `chunk_code()` : LangChain `RecursiveCharacterTextSplitter.from_language(Language.PYTHON)`,
+    `chunk_overlap=200`, **`add_start_index=True`** (indispensable pour les indices)
+  - autres → `chunk_text()` : fenêtre fixe de `max_chunk_size`
+  - Vérifié : 0 indice faux, aucun chunk > 2000.
+- `src/student/CLI.py` : `index` lit `.py`/`.md`, chunk, persiste `data/processed/chunks.json`.
+- Dépendances ajoutées : `tqdm`, `langchain`, `langchain-text-splitters`.
+
+## Testeur maison
+
+`testeur/check.py` (outil de dev, non soumis) — voir `testeur/README.md`.
+Lancer **avec uv** : `uv run python testeur/check.py [--full] [--step <nom>]`.
+Statuts : `OK` / `KO` / `~~` / `..` / `[]` (conception restant à faire).
+L'étape `design` est **auto-vérifiée** : elle analyse `chunks.json` (structure,
+extensions, indices, `max_chunk_size`) et la source de chaque fonction CLI.
+
+## À corriger (dette connue)
+
+- `CLI.py` : **chemin absolu en dur** (`/home/mobenais/...`) → doit devenir relatif
+  et configurable via argument CLI.
+- `CLI.py` : `except Exception as e` avec `e` inutilisé + f-string sans placeholder
+  → flake8 va râler.
+- Les paramètres `index="c'est l'index"` (et équivalents) sont des restes de stubs.
+- `max_chunk_size` n'est pas encore branché sur l'argument CLI.
+- Branche `if len(doc.page_content) > max_chunk_size` dans `chunk_code` : **code mort**
+  (le dernier séparateur LangChain est `""`, donc la taille n'est jamais dépassée).
+
 ## Notes de session
 
-_À mettre à jour à chaque session avec les décisions/blocages/à-faire._
+### Session du 2026-07-09
+
+Pièges Python rencontrés (à retenir) :
+- `Path("~/...")` n'expanse **pas** le `~` → la boucle ne trouve rien, sans erreur.
+- `from chunking import x` échoue : il faut `from student.chunking import x`.
+- `liste += dict` **itère les clés** du dict → utiliser `.append()` pour ajouter un
+  dict, et `+=` seulement pour concaténer une liste.
+- Fire **affiche automatiquement la valeur de retour** d'une commande → pas besoin de
+  `print`. Mais persister ≠ retourner : `index` doit **écrire sur disque**.
+- tqdm : utiliser `desc="..."` plutôt qu'un `print(..., end="")` (tqdm écrit sur stderr,
+  et un print sans `\n` n'est pas flush).
+
+**Prochaine étape : BM25** (`uv add bm25s`)
+- `index` : `corpus = [c["text"] for c in chunks]` → `bm25s.tokenize(corpus)` →
+  `BM25().index(tokens)` → `.save("data/processed/bm25_index")`
+- `search` : `BM25.load(...)` → `retrieve(query_tokens, k)` → `doc_id` → `chunks[doc_id]`
+- ⚠️ **L'ordre de `chunks` doit rester identique à celui du `corpus`** : les `doc_id`
+  renvoyés sont des **positions** dans le corpus. Réordonner/filtrer entre l'index et
+  le search casse le recall silencieusement.
+- Levier pour le recall code : découper `snake_case`/`camelCase` à la tokenisation
+  (`get_supported_mm_limits` → `get`, `supported`, `mm`, `limits`).
