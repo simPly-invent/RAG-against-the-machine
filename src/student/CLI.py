@@ -49,7 +49,7 @@ def index(max_chunk_size: int = 2000) -> str:
     return("Ingestion complete! Indices saved under data/processed/ ✅")
 
 
-def search(query: str, k: int = 10) -> list[dict]:
+def search(query: str = "default search", k: int = 10) -> list[dict]:
     return(search)
 
 
