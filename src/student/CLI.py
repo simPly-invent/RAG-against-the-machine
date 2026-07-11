@@ -1,5 +1,6 @@
 import json
 import bm25s
+from student.models import MinimalSource
 from student.chunking import chunk_file
 from pathlib import Path
 from tqdm import tqdm
@@ -43,14 +44,24 @@ def index(max_chunk_size: int = 2000) -> str:
     corpus = [c["text"] for c in resized_dataset]
     retriever = bm25s.BM25()
     retriever.index(bm25s.tokenize(corpus))
-    query = "does the fish purr like a cat?"
-    retriever.retrieve(bm25s.tokenize(query), k=2)
     retriever.save("data/processed/bm25_index")
     return("Ingestion complete! Indices saved under data/processed/ ✅")
 
 
-def search(query: str = "default search", k: int = 10) -> list[dict]:
-    return(search)
+def search(query: str, k: int = 10) -> list[MinimalSource]:
+    retriever = bm25s.BM25.load("data/processed/bm25_index")
+    chunks = json.loads(Path("data/processed/chunks/chunks.json").read_text())
+    results, scores = retriever.retrieve(bm25s.tokenize(query), k=k)
+    source = [
+        MinimalSource(
+            file_path=chunks[int(i)]["file_path"],
+            first_character_index=chunks[int(i)]["first_character_index"],
+            last_character_index=chunks[int(i)]["last_character_index"],
+        ).model_dump()
+        for i in results[0]
+    ]
+    # print(json.dumps(source, indent=2))
+    return(source)
 
 
 def search_dataset(search_dataset="c'est le search data_set"):

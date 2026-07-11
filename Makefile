@@ -45,17 +45,32 @@ lint-strict:
 ## test : lance les tests unitaires avec pytest
 test:
 	uv run python src/student/__main__.py index
-	uv run python src/student/__main__.py search
+	uv run python src/student/__main__.py search --query "link between google and gemini"
 	uv run python src/student/__main__.py search_dataset
 	uv run python src/student/__main__.py answer
 	uv run python src/student/__main__.py answer_dataset
 	@echo " --------------------------"
 	@echo "| tester result avancement |"
 	@echo " --------------------------"
-	uv run python tester/check.py --full
+	uv run python tester/check.py
 # 	uv run pytest -q
+test-strict:
+	uv run python src/student/__main__.py index
+	uv run python src/student/__main__.py search --query "link between google and gemini"
+	uv run python src/student/__main__.py search_dataset
+	uv run python src/student/__main__.py answer
+	uv run python src/student/__main__.py answer_dataset
+	@echo " --------------------------------"
+	@echo "| tester result avancement strict |"
+	@echo " --------------------------------"
+	uv run python tester/check.py --full
 
-
+step:
+	uv run python tester/check.py --full --step index
+	uv run python tester/check.py --full --step search
+	uv run python tester/check.py --full --step search_dataset
+	uv run python tester/check.py --full --step answer
+	uv run python tester/check.py --full --step answer_dataset
 ## clean : supprime les caches Python / mypy / pytest
 clean:
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +

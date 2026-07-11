@@ -4,6 +4,8 @@
 Outil de DEV (non noté, non soumis) : vérifie étape par étape si le projet
 respecte le sujet. On le relance après chaque avancée pour voir ce qui passe.
 
+
+lance le make file avec tester-strict normalement ca devrait faire full
 Usage :
     python testeur/check.py                 # checklist rapide (structure, modèles, CLI)
     python testeur/check.py --full          # + indexation + retrieval réels (lent)
@@ -330,14 +332,14 @@ def step_search_format(ctx: Ctx) -> list[Result]:
         ["search", "How to configure the OpenAI server?", "--k", "5"], timeout=120)
     if rc != 0:
         return [Result(FAIL, "search : exécution", err.strip()[-300:] or f"rc={rc}")]
-    try:
-        data = json.loads(out_s[out_s.index("{"):out_s.rindex("}") + 1])
-    except Exception:
+    data = _extract_json(out_s)
+    if data is None:
         return [Result(WARN, "search : sortie JSON",
                       "pas de JSON parsable en stdout", mandatory=False)]
     srcs = _first_sources(data)
     if srcs is None:
-        return [Result(WARN, "search : structure", "pas de retrieved_sources",
+        return [Result(WARN, "search : structure",
+                      "attendu : liste de MinimalSource (3 champs)",
                       mandatory=False)]
     bad = [s for s in srcs
            if not {"file_path", "first_character_index", "last_character_index"} <= set(s)
@@ -347,7 +349,30 @@ def step_search_format(ctx: Ctx) -> list[Result]:
                   f"{len(srcs)} sources OK")]
 
 
-def _first_sources(data: dict) -> Optional[list]:
+def _extract_json(out_s: str):
+    """Récupère le 1er document JSON de stdout, liste `[...]` OU objet `{...}`.
+
+    `search` émet une liste nue de MinimalSource ; `search_dataset` un objet
+    StudentSearchResults. On prend le délimiteur ouvrant qui vient en premier.
+    """
+    starts = [i for i in (out_s.find("["), out_s.find("{")) if i != -1]
+    if not starts:
+        return None
+    start = min(starts)
+    close = "]" if out_s[start] == "[" else "}"
+    end = out_s.rfind(close)
+    if end < start:
+        return None
+    try:
+        return json.loads(out_s[start:end + 1])
+    except Exception:
+        return None
+
+
+def _first_sources(data) -> Optional[list]:
+    # search : la valeur de retour EST déjà la liste de MinimalSource.
+    if isinstance(data, list):
+        return data
     if "retrieved_sources" in data:
         return data["retrieved_sources"]
     sr = data.get("search_results")
