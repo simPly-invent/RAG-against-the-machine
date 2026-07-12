@@ -42,22 +42,23 @@ lint-strict:
 	uv run flake8 .
 	uv run mypy . --strict
 
-## test : lance les tests unitaires avec pytest
 test:
 	uv run python src/student/__main__.py index
 	uv run python src/student/__main__.py search --query "link between google and gemini"
-	uv run python src/student/__main__.py search_dataset
+	uv run python src/student/__main__.py search_dataset --dataset_path datasets_public/public/UnansweredQuestions/dataset_docs_public.json
 	uv run python src/student/__main__.py answer
 	uv run python src/student/__main__.py answer_dataset
 	@echo " --------------------------"
 	@echo "| tester result avancement |"
 	@echo " --------------------------"
 	uv run python tester/check.py
-# 	uv run pytest -q
+## test : lance les tests unitaires avec pytest
+# 	↑ uv run pytest -q ↑
+
 test-strict:
 	uv run python src/student/__main__.py index
 	uv run python src/student/__main__.py search --query "link between google and gemini"
-	uv run python src/student/__main__.py search_dataset
+	uv run python src/student/__main__.py search_dataset --dataset_path datasets_public/public/UnansweredQuestions/dataset_docs_public.json
 	uv run python src/student/__main__.py answer
 	uv run python src/student/__main__.py answer_dataset
 	@echo " --------------------------------"
@@ -71,9 +72,10 @@ step:
 	uv run python tester/check.py --full --step search_dataset
 	uv run python tester/check.py --full --step answer
 	uv run python tester/check.py --full --step answer_dataset
-## clean : supprime les caches Python / mypy / pytest
+
+
 clean:
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +
 	find . -type f -name '*.py[co]' -delete
 	rm -rf .mypy_cache .pytest_cache .ruff_cache
-	rm -rf data/processed .venv
+	rm -rf data/processed .venv data/output

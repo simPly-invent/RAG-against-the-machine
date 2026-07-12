@@ -1,6 +1,11 @@
 import json
 import bm25s
-from student.models import MinimalSource
+from student.models import (
+    MinimalSource,
+    MinimalSearchResults,
+    StudentSearchResults,
+    RagDataset,
+)
 from student.chunking import chunk_file
 from pathlib import Path
 from tqdm import tqdm
@@ -48,6 +53,8 @@ def index(max_chunk_size: int = 2000) -> str:
     return("Ingestion complete! Indices saved under data/processed/ ✅")
 
 
+
+
 def search(query: str, k: int = 10) -> list[MinimalSource]:
     retriever = bm25s.BM25.load("data/processed/bm25_index")
     chunks = json.loads(Path("data/processed/chunks/chunks.json").read_text())
@@ -60,12 +67,40 @@ def search(query: str, k: int = 10) -> list[MinimalSource]:
         ).model_dump()
         for i in results[0]
     ]
-    # print(json.dumps(source, indent=2))
     return(source)
 
 
-def search_dataset(search_dataset="c'est le search data_set"):
-    return(search_dataset)
+def search_dataset(dataset_path: str, k: int = 10,
+                   save_directory: str = "data/output/search_results") -> None:
+    dataset = RagDataset.model_validate_json(Path(dataset_path).read_text())
+    questions = dataset.rag_questions
+
+    retriever = bm25s.BM25.load("data/processed/bm25_index")
+    chunks = json.loads(Path("data/processed/chunks/chunks.json").read_text())
+
+    results, _ = retriever.retrieve(
+        bm25s.tokenize([q.question for q in questions]), k=k)
+
+    search_results = [
+        MinimalSearchResults(
+            question_id=q.question_id,
+            question=q.question,
+            retrieved_sources=[
+                MinimalSource(
+                    file_path=chunks[int(i)]["file_path"],
+                    first_character_index=chunks[int(i)]["first_character_index"],
+                    last_character_index=chunks[int(i)]["last_character_index"],
+                )
+                for i in results[j]
+            ],
+        )
+        for j, q in enumerate(questions)
+    ]
+
+    out = StudentSearchResults(search_results=search_results, k=k)
+    Path(save_directory).mkdir(parents=True, exist_ok=True)
+    (Path(save_directory) / Path(dataset_path).name).write_text(
+        out.model_dump_json(indent=2))
 
 
 def answer(answer="answer"):

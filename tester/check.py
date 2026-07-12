@@ -350,10 +350,12 @@ def step_search_format(ctx: Ctx) -> list[Result]:
 
 
 def _extract_json(out_s: str):
-    """Récupère le 1er document JSON de stdout, liste `[...]` OU objet `{...}`.
+    """Récupère le JSON de stdout, en document unique OU en JSON-lines.
 
-    `search` émet une liste nue de MinimalSource ; `search_dataset` un objet
-    StudentSearchResults. On prend le délimiteur ouvrant qui vient en premier.
+    `search_dataset` émet un objet StudentSearchResults `{...}`. `search`
+    retourne une liste de MinimalSource, et Fire imprime alors **un objet par
+    ligne** (JSON-lines) : le slice « premier `{` → dernier `}` » avalerait
+    toutes les lignes d'un coup et échouerait. D'où le fallback ligne à ligne.
     """
     starts = [i for i in (out_s.find("["), out_s.find("{")) if i != -1]
     if not starts:
@@ -361,12 +363,22 @@ def _extract_json(out_s: str):
     start = min(starts)
     close = "]" if out_s[start] == "[" else "}"
     end = out_s.rfind(close)
-    if end < start:
-        return None
-    try:
-        return json.loads(out_s[start:end + 1])
-    except Exception:
-        return None
+    if end >= start:
+        try:
+            return json.loads(out_s[start:end + 1])
+        except Exception:
+            pass
+
+    docs = []
+    for line in out_s.splitlines():
+        line = line.strip()
+        if not line or line[0] not in "[{":
+            continue
+        try:
+            docs.append(json.loads(line))
+        except Exception:
+            return None
+    return docs or None
 
 
 def _first_sources(data) -> Optional[list]:
