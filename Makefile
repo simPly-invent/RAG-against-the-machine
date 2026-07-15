@@ -46,8 +46,10 @@ test:
 	uv run python src/student/__main__.py index
 	uv run python src/student/__main__.py search --query "link between google and gemini"
 	uv run python src/student/__main__.py search_dataset --dataset_path datasets_public/public/UnansweredQuestions/dataset_docs_public.json
-	uv run python src/student/__main__.py answer
-	uv run python src/student/__main__.py answer_dataset
+	uv run python src/student/__main__.py answer --query "link between google and gemini"
+	uv run python src/student/__main__.py answer_dataset --student_search_results_path data/output/search_results/dataset_docs_public.json
+	uv run python -m student evaluate --dataset_path datasets_public/public/AnsweredQuestions/dataset_docs_public.json --search_results_path data/output/search_results/dataset_docs_public.json
+
 	@echo " --------------------------"
 	@echo "| tester result avancement |"
 	@echo " --------------------------"
@@ -59,8 +61,10 @@ test-strict:
 	uv run python src/student/__main__.py index
 	uv run python src/student/__main__.py search --query "link between google and gemini"
 	uv run python src/student/__main__.py search_dataset --dataset_path datasets_public/public/UnansweredQuestions/dataset_docs_public.json
-	uv run python src/student/__main__.py answer
-	uv run python src/student/__main__.py answer_dataset
+	uv run python src/student/__main__.py answer --query "link between google and gemini"
+	uv run python src/student/__main__.py answer_dataset --student_search_results_path data/output/search_results/dataset_docs_public.json
+	uv run python -m student evaluate --dataset_path datasets_public/public/AnsweredQuestions/dataset_docs_public.json --search_results_path data/output/search_results/dataset_docs_public.json
+
 	@echo " --------------------------------"
 	@echo "| tester result avancement strict |"
 	@echo " --------------------------------"

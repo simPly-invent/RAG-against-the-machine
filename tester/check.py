@@ -102,7 +102,7 @@ def import_models() -> Optional[object]:
     for p in (str(SRC), str(ROOT)):
         if p not in sys.path:
             sys.path.insert(0, p)
-    for name in (f"{MODULE}.models", f"{MODULE}", "models"):
+    for name in (f"{MODULE}.pymodel", f"{MODULE}", "model"):
         try:
             return importlib.import_module(name)
         except Exception:
