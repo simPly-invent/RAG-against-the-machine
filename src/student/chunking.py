@@ -1,13 +1,20 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
 from pathlib import Path
 
-def chunk_file(text: str, file_path: str, max_chunk_size: int = 2000) -> list[dict]:
+
+def chunk_file(
+        text: str,
+        file_path: str,
+        max_chunk_size: int = 2000) -> list[dict]:
     if Path(file_path).suffix == ".py":
         return chunk_code(text, file_path, max_chunk_size)
     return chunk_text(text, file_path, max_chunk_size)
 
 
-def chunk_text(text: str, file_path: str, max_chunk_size: int = 2000) -> list[dict]:
+def chunk_text(
+        text: str,
+        file_path: str,
+        max_chunk_size: int = 2000) -> list[dict]:
     chunks = []
     start = 0
     index = 0
@@ -25,7 +32,10 @@ def chunk_text(text: str, file_path: str, max_chunk_size: int = 2000) -> list[di
     return chunks
 
 
-def chunk_code(text: str, file_path: str, max_chunk_size: int = 2000) -> list[dict]:
+def chunk_code(
+        text: str,
+        file_path: str,
+        max_chunk_size: int = 2000) -> list[dict]:
     splitter = RecursiveCharacterTextSplitter.from_language(
         Language.PYTHON,
         chunk_size=max_chunk_size,

@@ -83,7 +83,8 @@ class Ctx:
 
 
 # --- Utilitaires ------------------------------------------------------------
-def run_cli(cli_args: list[str], timeout: int = 600) -> tuple[int, str, str, float]:
+def run_cli(cli_args: list[str],
+            timeout: int = 600) -> tuple[int, str, str, float]:
     """Lance `uv run python -m student <cli_args>` ; renvoie (rc, out, err, secondes)."""
     cmd = ["uv", "run", "python", "-m", MODULE, *cli_args]
     start = time.perf_counter()
@@ -129,26 +130,33 @@ def overlap_ratio(r: dict, g: dict) -> float:
     lo = max(int(r["first_character_index"]), int(g["first_character_index"]))
     hi = min(int(r["last_character_index"]), int(g["last_character_index"]))
     inter = max(0, hi - lo)
-    span = max(1, int(g["last_character_index"]) - int(g["first_character_index"]))
+    span = max(1, int(g["last_character_index"]) -
+               int(g["first_character_index"]))
     return inter / span
 
 
-def _validate_files(files: list[Path], model_name: str, label: str) -> list[Result]:
+def _validate_files(
+        files: list[Path],
+        model_name: str,
+        label: str) -> list[Result]:
     """Valide chaque JSON contre un modèle Pydantic imposé."""
     mod = import_models()
     model = getattr(mod, model_name, None) if mod else None
     if model is None:
         return [Result(WARN, f"{label} : modèle {model_name}",
-                      "modèle introuvable", mandatory=False)]
+                       "modèle introuvable", mandatory=False)]
     bad = None
     for p in files:
-        ok, res = safe(lambda p=p: model.model_validate(json.loads(p.read_text())))
+        ok, res = safe(
+            lambda p=p: model.model_validate(
+                json.loads(
+                    p.read_text())))
         if not ok:
             bad = f"{p.name} : {str(res)[:120]}"
             break
     return [Result(PASS if bad is None else FAIL,
-                  f"{label} : conforme à {model_name}",
-                  bad or f"{len(files)} fichier(s) OK", mandatory=False)]
+                   f"{label} : conforme à {model_name}",
+                   bad or f"{len(files)} fichier(s) OK", mandatory=False)]
 
 
 def safe(fn: Callable[[], object]) -> tuple[bool, object]:
@@ -164,8 +172,8 @@ def _check_output_dir(dirpath: Path, model_name: str, label: str,
     """Vérifie un dossier de sortie : présence, nom == dataset, conformité modèle."""
     if not dirpath.exists():
         return [Result(SKIP, label,
-                      f"{dirpath.relative_to(ROOT)} absent (pas encore produit)",
-                      mandatory=False)]
+                       f"{dirpath.relative_to(ROOT)} absent (pas encore produit)",
+                       mandatory=False)]
     files = list(dirpath.rglob("*.json"))
     if not files:
         return [Result(SKIP, label, "aucun .json produit", mandatory=False)]
@@ -173,15 +181,23 @@ def _check_output_dir(dirpath: Path, model_name: str, label: str,
     out: list[Result] = []
     names = {p.name for p in files}
     good = names & DATASET_NAMES
-    out.append(Result(PASS if good else WARN, f"{label} : nom == dataset d'entrée",
-                      f"ok : {sorted(good)}" if good else f"noms inattendus : {sorted(names)}",
-                      mandatory=False))
+    out.append(
+        Result(
+            PASS if good else WARN,
+            f"{label} : nom == dataset d'entrée",
+            f"ok : {sorted(good)}" if good
+            else f"noms inattendus : {sorted(names)}",
+            mandatory=False))
     out += _validate_files(files, model_name, label)
     if check_k:
-        missing = [p.name for p in files
-                   if "k" not in (json.loads(p.read_text()) if p.is_file() else {})]
-        out.append(Result(PASS if not missing else WARN, f"{label} : champ k présent",
-                          f"absent dans : {missing}" if missing else "", mandatory=False))
+        missing = [p.name for p in files if "k" not in (
+            json.loads(p.read_text()) if p.is_file() else {})]
+        out.append(
+            Result(
+                PASS if not missing else WARN,
+                f"{label} : champ k présent",
+                f"absent dans : {missing}" if missing else "",
+                mandatory=False))
     return out
 
 
@@ -197,16 +213,29 @@ def step_structure(ctx: Ctx) -> list[Result]:
         missing = [t for t in ("install", "run", "debug", "clean", "lint")
                    if f"{t}:" not in txt]
         if missing:
-            out.append(Result(FAIL, "Makefile : cibles", f"manquantes : {missing}"))
+            out.append(
+                Result(
+                    FAIL,
+                    "Makefile : cibles",
+                    f"manquantes : {missing}"))
         else:
-            out.append(Result(PASS, "Makefile : cibles install/run/debug/clean/lint"))
+            out.append(
+                Result(
+                    PASS,
+                    "Makefile : cibles install/run/debug/clean/lint"))
     else:
         out.append(Result(FAIL, "Makefile", "absent"))
 
     out.append(Result(PASS if (ROOT / "pyproject.toml").is_file() else FAIL,
-                       "pyproject.toml"))
-    out.append(Result(PASS if (ROOT / "uv.lock").is_file() else WARN,
-                       "uv.lock", "généré par `uv sync`/`uv lock`", mandatory=False))
+                      "pyproject.toml"))
+    out.append(
+        Result(
+            PASS if (
+                ROOT /
+                "uv.lock").is_file() else WARN,
+            "uv.lock",
+            "généré par `uv sync`/`uv lock`",
+            mandatory=False))
 
     pkg = None
     for cand in (SRC / MODULE, ROOT / MODULE):
@@ -227,8 +256,12 @@ def step_structure(ctx: Ctx) -> list[Result]:
     if gi.is_file():
         g = gi.read_text(errors="ignore")
         need = [p for p in ("vllm-0.10.1", "__pycache__") if p not in g]
-        out.append(Result(PASS if not need else WARN, ".gitignore",
-                          f"ne couvre pas : {need}" if need else "", mandatory=False))
+        out.append(
+            Result(
+                PASS if not need else WARN,
+                ".gitignore",
+                f"ne couvre pas : {need}" if need else "",
+                mandatory=False))
     else:
         out.append(Result(WARN, ".gitignore", "absent", mandatory=False))
 
@@ -237,9 +270,12 @@ def step_structure(ctx: Ctx) -> list[Result]:
         first = rd.read_text(errors="ignore").strip().splitlines()
         first_line = first[0] if first else ""
         ok_first = first_line.startswith("*") and "42 curriculum" in first_line
-        out.append(Result(PASS if ok_first else WARN, "README : 1re ligne italique 42",
-                          "" if ok_first else "format attendu : *...42 curriculum by <login>*",
-                          mandatory=False))
+        out.append(
+            Result(
+                PASS if ok_first else WARN,
+                "README : 1re ligne italique 42",
+                "" if ok_first else "format attendu : *...42 curriculum by <login>*",
+                mandatory=False))
     else:
         out.append(Result(WARN, "README.md", "absent (requis au livrable)",
                           mandatory=False))
@@ -253,15 +289,27 @@ def step_models(ctx: Ctx) -> list[Result]:
     mod = import_models()
     if mod is None:
         return [Result(FAIL, "import des modèles Pydantic",
-                      f"module `{MODULE}.models` introuvable")]
+                       f"module `{MODULE}.models` introuvable")]
     expected = {
-        "MinimalSource": ["file_path", "first_character_index", "last_character_index"],
-        "UnansweredQuestion": ["question_id", "question"],
-        "AnsweredQuestion": ["sources", "answer"],
+        "MinimalSource": [
+            "file_path",
+            "first_character_index",
+            "last_character_index"],
+        "UnansweredQuestion": [
+            "question_id",
+            "question"],
+        "AnsweredQuestion": [
+            "sources",
+            "answer"],
         "RagDataset": ["rag_questions"],
-        "MinimalSearchResults": ["question_id", "question", "retrieved_sources"],
+        "MinimalSearchResults": [
+            "question_id",
+            "question",
+            "retrieved_sources"],
         "MinimalAnswer": ["answer"],
-        "StudentSearchResults": ["search_results", "k"],
+        "StudentSearchResults": [
+            "search_results",
+            "k"],
         "StudentSearchResultsAndAnswer": ["search_results"],
     }
     out: list[Result] = []
@@ -272,8 +320,12 @@ def step_models(ctx: Ctx) -> list[Result]:
             continue
         model_fields = getattr(cls, "model_fields", None)
         if model_fields is None:
-            out.append(Result(WARN, f"modèle {cls_name}",
-                              "n'est pas un BaseModel pydantic v2", mandatory=False))
+            out.append(
+                Result(
+                    WARN,
+                    f"modèle {cls_name}",
+                    "n'est pas un BaseModel pydantic v2",
+                    mandatory=False))
             continue
         miss = [f for f in fields if f not in model_fields]
         out.append(Result(PASS if not miss else FAIL, f"modèle {cls_name}",
@@ -303,7 +355,8 @@ def step_cli(ctx: Ctx) -> list[Result]:
 # ÉTAPE 3 — Indexation (lent : --full)
 # ===========================================================================
 def step_index(ctx: Ctx) -> list[Result]:
-    proc_ok = PROCESSED.exists() and any(p.is_file() for p in PROCESSED.rglob("*"))
+    proc_ok = PROCESSED.exists() and any(p.is_file()
+                                         for p in PROCESSED.rglob("*"))
     res: list[Result] = [Result(
         PASS if proc_ok else SKIP, "index : artefacts data/processed/",
         "présents" if proc_ok else "pas encore générés (bm25_index/, chunks/)",
@@ -312,9 +365,11 @@ def step_index(ctx: Ctx) -> list[Result]:
         res.append(Result(SKIP, "indexation réelle", "relance avec --full",
                           mandatory=False))
         return res
-    rc, _o, err, secs = run_cli(["index", "--max_chunk_size", "2000"], timeout=600)
+    rc, _o, err, secs = run_cli(
+        ["index", "--max_chunk_size", "2000"], timeout=600)
     if rc != 0:
-        res.append(Result(FAIL, "index : exécution", err.strip()[-300:] or f"rc={rc}"))
+        res.append(Result(FAIL, "index : exécution",
+                   err.strip()[-300:] or f"rc={rc}"))
         return res
     res.append(Result(PASS, "index : exécution sans crash"))
     res.append(Result(PASS if secs <= 300 else FAIL,
@@ -327,26 +382,36 @@ def step_index(ctx: Ctx) -> list[Result]:
 # ===========================================================================
 def step_search_format(ctx: Ctx) -> list[Result]:
     if not ctx.full:
-        return [Result(SKIP, "format de search", "relance avec --full", mandatory=False)]
+        return [
+            Result(
+                SKIP,
+                "format de search",
+                "relance avec --full",
+                mandatory=False)]
     rc, out_s, err, _ = run_cli(
         ["search", "How to configure the OpenAI server?", "--k", "5"], timeout=120)
     if rc != 0:
-        return [Result(FAIL, "search : exécution", err.strip()[-300:] or f"rc={rc}")]
+        return [Result(FAIL, "search : exécution",
+                       err.strip()[-300:] or f"rc={rc}")]
     data = _extract_json(out_s)
     if data is None:
         return [Result(WARN, "search : sortie JSON",
-                      "pas de JSON parsable en stdout", mandatory=False)]
+                       "pas de JSON parsable en stdout", mandatory=False)]
     srcs = _first_sources(data)
     if srcs is None:
         return [Result(WARN, "search : structure",
-                      "attendu : liste de MinimalSource (3 champs)",
-                      mandatory=False)]
-    bad = [s for s in srcs
-           if not {"file_path", "first_character_index", "last_character_index"} <= set(s)
-           or int(s["last_character_index"]) < int(s["first_character_index"])]
+                       "attendu : liste de MinimalSource (3 champs)",
+                       mandatory=False)]
+    bad = [
+        s for s in srcs if not {
+            "file_path",
+            "first_character_index",
+            "last_character_index"} <= set(s) or int(
+            s["last_character_index"]) < int(
+                s["first_character_index"])]
     return [Result(PASS if not bad else FAIL, "search : sources bien formées",
-                  f"{len(bad)} source(s) invalide(s)" if bad else
-                  f"{len(srcs)} sources OK")]
+                   f"{len(bad)} source(s) invalide(s)" if bad else
+                   f"{len(srcs)} sources OK")]
 
 
 def _extract_json(out_s: str):
@@ -415,17 +480,29 @@ def evaluate_recall(search_results_path: Path, ground_truth_path: Path,
             continue
         for k in ks:
             topk = retrieved[:k]
-            found = sum(1 for g in correct
-                        if any(overlap_ratio(r, g) >= OVERLAP_MIN for r in topk))
+            found = sum(
+                1 for g in correct if any(
+                    overlap_ratio(
+                        r, g) >= OVERLAP_MIN for r in topk))
             scores[k].append(found / len(correct))
     return {k: (sum(v) / len(v) if v else 0.0) for k, v in scores.items()}
 
 
 def step_recall(ctx: Ctx) -> list[Result]:
     a = ctx.args
-    if not getattr(a, "search_results", None) or not getattr(a, "ground_truth", None):
-        return [Result(SKIP, "recall@k",
-                      "fournir --search-results et --ground-truth", mandatory=False)]
+    if not getattr(
+        a,
+        "search_results",
+        None) or not getattr(
+        a,
+        "ground_truth",
+            None):
+        return [
+            Result(
+                SKIP,
+                "recall@k",
+                "fournir --search-results et --ground-truth",
+                mandatory=False)]
     srp, gtp = Path(a.search_results), Path(a.ground_truth)
     if not srp.is_file() or not gtp.is_file():
         return [Result(FAIL, "recall@k", "fichier(s) introuvable(s)")]
@@ -466,22 +543,34 @@ def step_answer_dataset(ctx: Ctx) -> list[Result]:
         files = [p]
     else:  # sinon, dossier standard du sujet
         if not OUT_ANSWER.exists():
-            return [Result(SKIP, "answer_dataset",
-                          f"{OUT_ANSWER.relative_to(ROOT)} absent (pas encore produit)",
-                          mandatory=False)]
+            return [
+                Result(
+                    SKIP, "answer_dataset",
+                    f"{OUT_ANSWER.relative_to(ROOT)} absent "
+                    "(pas encore produit)", mandatory=False)]
         files = list(OUT_ANSWER.rglob("*.json"))
         if not files:
             return [Result(SKIP, "answer_dataset", "aucun .json produit",
-                          mandatory=False)]
+                           mandatory=False)]
 
-    out = _validate_files(files, "StudentSearchResultsAndAnswer", "answer_dataset")
+    out = _validate_files(
+        files,
+        "StudentSearchResultsAndAnswer",
+        "answer_dataset")
     for p in files:
         ok, data = safe(lambda p=p: json.loads(p.read_text()))
-        rows = data.get("search_results", []) if ok and isinstance(data, dict) else []
+        rows = data.get(
+            "search_results",
+            []) if ok and isinstance(
+            data,
+            dict) else []
         empty = sum(1 for r in rows if not str(r.get("answer", "")).strip())
-        out.append(Result(PASS if empty == 0 else WARN,
-                          f"answer_dataset : {p.name} ({len(rows)} réponses)",
-                          f"{empty} vide(s)" if empty else "", mandatory=False))
+        out.append(
+            Result(
+                PASS if empty == 0 else WARN,
+                f"answer_dataset : {p.name} ({len(rows)} réponses)",
+                f"{empty} vide(s)" if empty else "",
+                mandatory=False))
     return out
 
 
@@ -503,7 +592,11 @@ def step_selftest(ctx: Ctx) -> list[Result]:
         ("overlap 2% < seuil 5%",
          overlap_ratio(src("a.py", 98, 100), src("a.py", 0, 100)) < OVERLAP_MIN),
     ]
-    return [Result(PASS if ok else FAIL, f"métrique : {label}") for label, ok in cases]
+    return [
+        Result(
+            PASS if ok else FAIL,
+            f"métrique : {label}") for label,
+        ok in cases]
 
 
 # ===========================================================================
@@ -519,7 +612,9 @@ def _src_text() -> str:
     if "all" not in _SRC_CACHE:
         parts = []
         for p in (SRC / MODULE).rglob("*.py"):
-            ok, txt = safe(lambda p=p: p.read_text(encoding="utf-8", errors="ignore"))
+            ok, txt = safe(
+                lambda p=p: p.read_text(
+                    encoding="utf-8", errors="ignore"))
             if ok:
                 parts.append(str(txt))
         _SRC_CACHE["all"] = "\n".join(parts).lower()
@@ -537,7 +632,10 @@ def _read_chunks() -> tuple[Optional[list], str]:
     size = CHUNKS_JSON.stat().st_size
     if size > 400_000_000:
         return None, f"chunks.json trop gros ({size / 1e6:.0f} Mo) pour l'analyse"
-    ok, data = safe(lambda: json.loads(CHUNKS_JSON.read_text(encoding="utf-8")))
+    ok, data = safe(
+        lambda: json.loads(
+            CHUNKS_JSON.read_text(
+                encoding="utf-8")))
     if not ok:
         return None, f"JSON invalide : {str(data)[:80]}"
     return data if isinstance(data, list) else None, (
@@ -554,20 +652,31 @@ def _flatten(data: list) -> tuple[list, bool]:
 def _design_index(out: list[Result]) -> None:
     data, err = _read_chunks()
     if data is None:
-        out.append(Result(SKIP, "[index] chunks.json analysable", err, mandatory=False))
+        out.append(
+            Result(
+                SKIP,
+                "[index] chunks.json analysable",
+                err,
+                mandatory=False))
         return
 
     chunks, nested = _flatten(data)
-    out.append(Result(
-        FAIL if nested else PASS, "[index] chunks.json = liste plate de chunks",
-        "liste de listes ! utilise `resized += chunk_text(...)` (ou .extend) "
-        "au lieu de .append" if nested else f"{len(chunks)} chunks",
-        mandatory=False))
+    out.append(
+        Result(
+            FAIL if nested else PASS,
+            "[index] chunks.json = liste plate de chunks",
+            "list of lists! use `resized += chunk_text(...)` (or .extend) "
+            "instead of .append" if nested else f"{len(chunks)} chunks",
+            mandatory=False))
 
     dicts = [c for c in chunks if isinstance(c, dict)]
     if not dicts:
-        out.append(Result(FAIL, "[index] chunks = dictionnaires", "aucun dict trouvé",
-                          mandatory=False))
+        out.append(
+            Result(
+                FAIL,
+                "[index] chunks = dictionnaires",
+                "aucun dict trouvé",
+                mandatory=False))
         return
 
     need = {"file_path", "first_character_index", "last_character_index"}
@@ -579,9 +688,12 @@ def _design_index(out: list[Result]) -> None:
 
     exts = {Path(str(c.get("file_path", ""))).suffix for c in dicts}
     bad = exts - {".py", ".md"}
-    out.append(Result(PASS if not bad else WARN, "[index] fichiers filtrés (.py, .md)",
-                      f"autres extensions : {sorted(bad)[:6]}" if bad else "",
-                      mandatory=False))
+    out.append(
+        Result(
+            PASS if not bad else WARN,
+            "[index] fichiers filtrés (.py, .md)",
+            f"other extensions: {sorted(bad)[:6]}" if bad else "",
+            mandatory=False))
 
     prefixed = all("vllm-0.10.1" in str(c.get("file_path", "")) for c in dicts)
     out.append(Result(PASS if prefixed else FAIL,
@@ -590,7 +702,8 @@ def _design_index(out: list[Result]) -> None:
                       mandatory=False))
 
     if keys_ok:
-        spans = [c["last_character_index"] - c["first_character_index"] for c in dicts]
+        spans = [c["last_character_index"] - c["first_character_index"]
+                 for c in dicts]
         too_big = [s for s in spans if s > MAX_CHUNK]
         out.append(Result(PASS if not too_big else FAIL,
                           f"[index] respecte max_chunk_size ({MAX_CHUNK})",
@@ -598,8 +711,8 @@ def _design_index(out: list[Result]) -> None:
                           if too_big else f"max observé : {max(spans)}",
                           mandatory=False))
 
-        coherent = all(0 <= c["first_character_index"] < c["last_character_index"]
-                       for c in dicts)
+        coherent = all(0 <= c["first_character_index"] <
+                       c["last_character_index"] for c in dicts)
         out.append(Result(PASS if coherent else FAIL,
                           "[index] indices cohérents (0 <= first < last)",
                           mandatory=False))
@@ -615,10 +728,12 @@ def _design_index(out: list[Result]) -> None:
                           mandatory=False))
 
     bm25 = any(PROCESSED.glob("*bm25*")) or _uses("bm25") or _uses("tfidf")
-    out.append(Result(PASS if bm25 else TODO,
-                      "[index] index BM25 (ou TF-IDF) construit et persisté",
-                      "" if bm25 else "rien dans data/processed/, ni dans le code",
-                      mandatory=False))
+    out.append(
+        Result(
+            PASS if bm25 else TODO,
+            "[index] index BM25 (ou TF-IDF) construit et persisté",
+            "" if bm25 else "rien dans data/processed/, ni dans le code",
+            mandatory=False))
 
     out.append(Result(PASS if _uses("tqdm") else TODO,
                       "[index] barre de progression tqdm", mandatory=False))
@@ -675,8 +790,8 @@ def _design_rest(out: list[Result]) -> None:
         for i, (label, pred) in enumerate(checks):
             done = (not stub) and pred(_func_src(func))
             note = "fonction encore vide (stub)" if stub and i == 0 else ""
-            out.append(Result(PASS if done else TODO, f"[{func}] {label}", note,
-                              mandatory=False))
+            out.append(Result(PASS if done else TODO,
+                       f"[{func}] {label}", note, mandatory=False))
 
 
 def step_design(ctx: Ctx) -> list[Result]:
@@ -704,13 +819,20 @@ STEPS: list[Step] = [
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Testeur de progression du projet RAG.")
-    ap.add_argument("--full", action="store_true",
-                    help="exécute aussi les checks lents (index, search réels)")
+    ap = argparse.ArgumentParser(
+        description="Testeur de progression du projet RAG.")
+    ap.add_argument(
+        "--full",
+        action="store_true",
+        help="exécute aussi les checks lents (index, search réels)")
     ap.add_argument("--step", choices=[s.key for s in STEPS],
                     help="ne lancer qu'une étape")
-    ap.add_argument("--search-results", help="JSON de search_dataset (étape recall)")
-    ap.add_argument("--ground-truth", help="JSON AnsweredQuestions (étape recall)")
+    ap.add_argument(
+        "--search-results",
+        help="JSON de search_dataset (étape recall)")
+    ap.add_argument(
+        "--ground-truth",
+        help="JSON AnsweredQuestions (étape recall)")
     ap.add_argument("--kind", choices=["docs", "code"],
                     help="type de dataset pour comparer aux seuils recall@5")
     ap.add_argument("--answers", help="JSON de answer_dataset (étape answers)")
