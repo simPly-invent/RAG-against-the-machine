@@ -217,3 +217,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated (index, chunks, outputs)
+data/processed/
+data/output/
