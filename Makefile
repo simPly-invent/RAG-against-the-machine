@@ -23,7 +23,8 @@ install:
 	uv sync
 
 run:
-	uv run python -m $(MODULE) $(ARGS)
+	uv run python -m student index
+	uv run python -m student search --query "link between google and gemini"
 
 debug:
 	uv run python -m pdb -m $(MODULE) $(ARGS)
@@ -35,16 +36,34 @@ lint:
 
 
 lint-strict:
-	uv run flake8 .
-	uv run mypy . --strict
+	flake8 src/student
+	mypy src/student --strict
 
 test:
-	uv run python src/student/__main__.py index
-	uv run python src/student/__main__.py search --query "link between google and gemini"
-	uv run python src/student/__main__.py search_dataset --dataset_path datasets_public/public/UnansweredQuestions/dataset_docs_public.json
-	uv run python src/student/__main__.py answer --query "link between google and gemini"
-	uv run python src/student/__main__.py answer_dataset --student_search_results_path data/output/search_results/dataset_docs_public.json
-	uv run python -m student evaluate --dataset_path datasets_public/public/AnsweredQuestions/dataset_docs_public.json --search_results_path data/output/search_results/dataset_docs_public.json
+	@echo " ----------"
+	@echo "|index-test|"
+	@echo " ----------"
+	uv run python -m student index
+	@echo " ----------"
+	@echo "|simple_search-test|"
+	@echo " ----------"
+	uv run python -m student search --query "link between google and gemini"
+	@echo " ----------"
+	@echo "|search_dataset-test|"
+	@echo " ----------"
+	uv run python -m student search_dataset --dataset_path data/datasets/UnansweredQuestions/dataset_docs_public.json
+	@echo " ----------"
+	@echo "|answer-test|"
+	@echo " ----------"
+	uv run python -m student answer --query "link between google and gemini"
+	@echo " ----------"
+	@echo "|answer_dataset-test|"
+	@echo " ----------"
+	uv run python -m student answer_dataset --student_search_results_path data/output/search_results/dataset_docs_public.json
+	@echo " ----------"
+	@echo "|evaluate-test|"
+	@echo " ----------"
+	uv run python -m student evaluate --dataset_path data/datasets/AnsweredQuestions/dataset_docs_public.json --search_results_path data/output/search_results/dataset_docs_public.json
 
 
 
@@ -52,4 +71,4 @@ clean:
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +
 	find . -type f -name '*.py[co]' -delete
 	rm -rf .mypy_cache 
-	rm -rf data/processed .venv data/output data/raw/vllm-0.10.1
+	rm -rf data/processed .venv data/output

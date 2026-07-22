@@ -48,10 +48,21 @@ def generate_answer(
         context: str,
         max_new_tokens: int = 256) -> str:
     tokenizer, model, device = load_model()
-    input_text = (
-        f"<|im_start|>user Question: {question}<|im_end|>\n"
-        f"<|im_start|>system Context: {context}<|im_end|>\n"
-        "<|im_start|>assistant Answer:"
+    messages = [
+        {"role": "system",
+         "content": "Answer the question using only the provided context. "
+                    "Be concise."},
+        {"role": "user",
+         "content": f"Context:\n{context}\n\nQuestion: {question}"},
+    ]
+    # apply_chat_template builds the exact prompt format the model expects.
+    # enable_thinking=False keeps the token budget for the answer itself:
+    # Qwen3 otherwise spends it inside <think>...</think>.
+    input_text = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+        enable_thinking=False,
     )
     inputs = tokenizer(input_text, return_tensors="pt").to(device)
     with torch.no_grad():
@@ -59,4 +70,4 @@ def generate_answer(
             **inputs, max_new_tokens=max_new_tokens)
     new_tokens = outputs[0][inputs["input_ids"].shape[1]:]
     answer = tokenizer.decode(new_tokens, skip_special_tokens=True)
-    return cast(str, answer)
+    return cast(str, answer).strip()
