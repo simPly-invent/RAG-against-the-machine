@@ -9,14 +9,18 @@ from transformers import (
 )
 from functools import lru_cache
 from student.pymodel import MinimalSource
+from student.errors import ModelLoadError, SourceFileError
 
 MODEL_NAME = "Qwen/Qwen3-0.6B"
 
 
 @lru_cache(maxsize=1)
 def load_model() -> Tuple[PreTrainedTokenizerBase, PreTrainedModel, str]:
-    model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    try:
+        model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    except Exception as exc:
+        raise ModelLoadError(MODEL_NAME, str(exc)) from exc
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)  # type: ignore[arg-type]
     return (tokenizer, model, device)
@@ -27,7 +31,10 @@ def build_context(
         max_context_length: int = 2000) -> str:
     context = ""
     for source in sources:
-        text = Path(source.file_path).read_text(errors="ignore")
+        try:
+            text = Path(source.file_path).read_text(errors="ignore")
+        except OSError as exc:
+            raise SourceFileError(source.file_path, str(exc)) from exc
         snippet = text[
             source.first_character_index:source.last_character_index]
         context += f"File: {source.file_path}\nContent: {snippet}\n"
