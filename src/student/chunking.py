@@ -14,21 +14,22 @@ def chunk_file(
 def chunk_text(
         text: str,
         file_path: str,
-        max_chunk_size: int = 2000) -> list[dict]:
+        max_chunk_size: int = 2000,
+        overlap: int = 200) -> list[dict]:
     chunks = []
     start = 0
-    index = 0
+    step = max(1, max_chunk_size - overlap)
     while start < len(text):
         end = min(start + max_chunk_size, len(text))
         chunks.append({
-            "index": index,
             "file_path": file_path,
             "first_character_index": start,
             "last_character_index": end,
             "text": text[start:end],
         })
-        index += 1
-        start += max_chunk_size
+        if end == len(text):
+            break
+        start += step
     return chunks
 
 
