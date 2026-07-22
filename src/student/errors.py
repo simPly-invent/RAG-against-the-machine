@@ -63,7 +63,7 @@ class EmptyCorpusError(StudentError):
         )
 
 
-# CLI arguments 
+# CLI arguments
 class InvalidKError(StudentError):
     """`k` is outside the acceptable range."""
 

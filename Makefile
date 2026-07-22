@@ -1,13 +1,9 @@
-# Makefile — RAG against the machine
-
 MODULE := student
 
-# Arguments passés à la CLI, ex : make run ARGS="index --max_chunk_size 2000"
 ARGS ?=
 
 .DEFAULT_GOAL := help
 
-# Utilise bash pour question de compatibilté
 SHELL := /bin/bash
 
 .PHONY: help install run debug clean lint lint-strict test
@@ -50,36 +46,10 @@ test:
 	uv run python src/student/__main__.py answer_dataset --student_search_results_path data/output/search_results/dataset_docs_public.json
 	uv run python -m student evaluate --dataset_path datasets_public/public/AnsweredQuestions/dataset_docs_public.json --search_results_path data/output/search_results/dataset_docs_public.json
 
-	@echo " --------------------------"
-	@echo "| tester result avancement |"
-	@echo " --------------------------"
-	uv run python tester/check.py
-## test : lance les tests unitaires avec pytest
-# 	↑ uv run pytest -q ↑
-
-test-strict:
-	uv run python src/student/__main__.py index
-	uv run python src/student/__main__.py search --query "link between google and gemini"
-	uv run python src/student/__main__.py search_dataset --dataset_path datasets_public/public/UnansweredQuestions/dataset_docs_public.json
-	uv run python src/student/__main__.py answer --query "link between google and gemini"
-	uv run python src/student/__main__.py answer_dataset --student_search_results_path data/output/search_results/dataset_docs_public.json
-	uv run python -m student evaluate --dataset_path datasets_public/public/AnsweredQuestions/dataset_docs_public.json --search_results_path data/output/search_results/dataset_docs_public.json
-
-	@echo " --------------------------------"
-	@echo "| tester result avancement strict |"
-	@echo " --------------------------------"
-	uv run python tester/check.py --full
-
-step:
-	uv run python tester/check.py --full --step index
-	uv run python tester/check.py --full --step search
-	uv run python tester/check.py --full --step search_dataset
-	uv run python tester/check.py --full --step answer
-	uv run python tester/check.py --full --step answer_dataset
 
 
 clean:
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +
 	find . -type f -name '*.py[co]' -delete
-	rm -rf .mypy_cache .pytest_cache .ruff_cache
+	rm -rf .mypy_cache 
 	rm -rf data/processed .venv data/output

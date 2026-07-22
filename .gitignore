@@ -151,7 +151,6 @@ activemq-data/
 .env
 .envrc
 .venv
-vllm-0.10.1
 env/
 venv/
 ENV/
