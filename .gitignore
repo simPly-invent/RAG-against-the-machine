@@ -223,4 +223,3 @@ __marimo__/
 # Generated (index, chunks, outputs)
 data/processed/
 data/output/
-data/raw/vllm-0.10.1
