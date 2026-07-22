@@ -52,4 +52,4 @@ clean:
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +
 	find . -type f -name '*.py[co]' -delete
 	rm -rf .mypy_cache 
-	rm -rf data/processed .venv data/output
+	rm -rf data/processed .venv data/output data/raw/vllm-0.10.1

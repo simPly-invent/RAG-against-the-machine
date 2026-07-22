@@ -22,7 +22,7 @@ def load_model() -> Tuple[PreTrainedTokenizerBase, PreTrainedModel, str]:
     except Exception as exc:
         raise ModelLoadError(MODEL_NAME, str(exc)) from exc
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(device)  # type: ignore[arg-type]
+    model.to(device)
     return (tokenizer, model, device)
 
 
@@ -55,7 +55,7 @@ def generate_answer(
     )
     inputs = tokenizer(input_text, return_tensors="pt").to(device)
     with torch.no_grad():
-        outputs = model.generate(  # type: ignore[operator]
+        outputs = model.generate(
             **inputs, max_new_tokens=max_new_tokens)
     new_tokens = outputs[0][inputs["input_ids"].shape[1]:]
     answer = tokenizer.decode(new_tokens, skip_special_tokens=True)

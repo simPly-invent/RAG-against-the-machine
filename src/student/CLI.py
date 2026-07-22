@@ -74,7 +74,7 @@ def index(max_chunk_size: int = 2000) -> str:
 
 
 def search(query: str, k: int = 10) -> list[dict]:
-    if k <= 0:
+    if not isinstance(k, int) or isinstance(k, bool) or k <= 0:
         raise InvalidKError(k)
     if not BM25_DIR.is_dir():
         raise IndexNotFoundError(str(BM25_DIR))
@@ -92,8 +92,6 @@ def search(query: str, k: int = 10) -> list[dict]:
     if k > len(chunks):
         raise InvalidKError(k, len(chunks))
     tokens = bm25s.tokenize(query)
-    # 0 token => every chunk scores 0 => BM25 would return the k first
-    # chunks of the corpus as if they were relevant.
     if not tokens.ids[0]:
         raise EmptyQueryError(query)
     results, scores = retriever.retrieve(tokens, k=k)
@@ -113,7 +111,7 @@ def search(query: str, k: int = 10) -> list[dict]:
 
 def search_dataset(dataset_path: str, k: int = 10,
                    save_directory: str = "data/output/search_results") -> None:
-    if k <= 0:
+    if not isinstance(k, int) or isinstance(k, bool) or k <= 0:
         raise InvalidKError(k)
     if not Path(dataset_path).is_file():
         raise DatasetNotFoundError(dataset_path)
