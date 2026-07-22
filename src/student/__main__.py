@@ -1,5 +1,5 @@
 import fire
-from student import CLI
+from . import CLI
 
 if __name__ == "__main__":
     fire.Fire({
