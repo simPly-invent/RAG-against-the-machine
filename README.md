@@ -112,8 +112,8 @@ Measured on the public `AnsweredQuestions` datasets, **recall@5**:
 
 | Corpus | recall@5 | Threshold | Status |
 |--------|----------|-----------|--------|
-| Docs   | **82 %** | ≥ 80 %    | ✅ pass |
-| Code   | **53 %** | ≥ 50 %    | ✅ pass |
+| Docs   | **82 %** | ≥ 80 %    | pass   |
+| Code   | **53 %** | ≥ 50 %    | pass   |
 
 Recall@k counts a ground-truth source as *found* when a retrieved source
 overlaps it by ≥ 5 % (same file, intersecting character range). The per-question
