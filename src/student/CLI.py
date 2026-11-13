@@ -70,7 +70,7 @@ def index(max_chunk_size: int = 2000) -> str:
     retriever = bm25s.BM25()
     retriever.index(bm25s.tokenize(corpus))
     retriever.save("data/processed/bm25_index")
-    return "Ingestion complete! Indices saved under data/processed/ ✅"
+    return "Ingestion complete! Indices saved under data/processed/"
 
 
 def search(query: str, k: int = 10) -> list[dict]:

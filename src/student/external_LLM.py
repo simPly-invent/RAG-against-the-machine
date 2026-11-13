@@ -1,12 +1,5 @@
-from typing import List, Tuple, cast
-import torch
+from typing import TYPE_CHECKING, List, Tuple, cast
 from pathlib import Path
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    PreTrainedModel,
-    PreTrainedTokenizerBase,
-)
 from functools import lru_cache
 from student.pymodel import MinimalSource
 from student.errors import ModelLoadError, SourceFileError
@@ -14,8 +7,17 @@ from student.errors import ModelLoadError, SourceFileError
 MODEL_NAME = "Qwen/Qwen3-0.6B"
 
 
+if TYPE_CHECKING:  # pragma: no cover
+    from transformers import PreTrainedModel, PreTrainedTokenizerBase
+
+
 @lru_cache(maxsize=1)
-def load_model() -> Tuple[PreTrainedTokenizerBase, PreTrainedModel, str]:
+def load_model() -> Tuple["PreTrainedTokenizerBase", "PreTrainedModel", str]:
+    # torch and transformers are imported here, not at module level, so the
+    # retrieval-only commands (index, search, evaluate) start instantly and
+    # do not even need those packages installed.
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
     try:
         model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
         tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
@@ -47,6 +49,7 @@ def generate_answer(
         question: str,
         context: str,
         max_new_tokens: int = 256) -> str:
+    import torch
     tokenizer, model, device = load_model()
     messages = [
         {"role": "system",

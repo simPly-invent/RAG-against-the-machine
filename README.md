@@ -10,6 +10,8 @@ grounded answer with a local LLM.
 
 Pipeline: **ingest → index → search → answer → evaluate**.
 
+![index then search in about a second](docs/demo.gif)
+
 ## Description
 
 The system indexes every `.py` and `.md` file of `vllm-0.10.1`, splits them
@@ -127,7 +129,9 @@ score is `found / total_correct_sources`, averaged over questions.
 ## Design decisions
 
 - **Lazy, cached LLM loading** — `load_model()` is `@lru_cache`d and only called
-  from `generate_answer()`, so `index`/`search` never load Qwen.
+  from `generate_answer()`, so `index`/`search` never load Qwen. `torch` and
+  `transformers` are imported inside those functions too, so the retrieval
+  commands start in well under a second and run even without them installed.
 - **Output filename mirrors the input dataset name** — `search_dataset` and
   `answer_dataset` write to `<save_directory>/<input dataset name>`.
 - **Character indices over token indices** — results are byte ranges, matching
